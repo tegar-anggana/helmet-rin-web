@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Processing Results</title>
+  </head>
+  <body>
+    <h1>Processing Results</h1>
+    <p>
+      <a href="{{ url_for('uploaded_file', filename=filename) }}"
+        >Download Annotated File</a
+      >
+    </p>
+    <p>
+      <a href="{{ url_for('uploaded_file', filename=excel_logs) }}"
+        >Download Detection Logs (Excel)</a
+      >
+    </p>
+    <p>
+      <a href="{{ url_for('uploaded_file', filename=excel_minute_data) }}"
+        >Download Minutes Summary (Excel)</a
+      >
+    </p>
+
+    {% if inference_time %}
+    <h2>Total Inference Time:</h2>
+    <p>{{ inference_time }} milliseconds</p>
+    {% endif %}
+
+    {% if inference_time_sec %}
+    <p>{{ inference_time_sec }} seconds</p>
+    {% endif %}
+
+    {% if inference_time_min %}
+    <p>{{ inference_time_min }} minutes</p>
+    {% endif %}
+
+    <a href="{{ url_for('index') }}">Upload Another File</a>
+  </body>
+</html>

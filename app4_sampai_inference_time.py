@@ -8,6 +8,8 @@ import numpy as np
 from PIL import Image
 from datetime import datetime
 import time
+import psutil  # Untuk CPU dan RAM usage
+import GPUtil  # Tambahkan pustaka GPUtil untuk GPU usage
 
 app = Flask(__name__)
 
@@ -21,10 +23,26 @@ model = YOLO(model_path)
 log_data = []
 minute_data = []
 
-def predict_frame(frame, frame_index, timestamp):
+def predict_frame(frame, frame_index, timestamp, threshold):
     start_time = time.time()  # Start timing
+    start_cpu = psutil.cpu_percent(interval=None)  # Start CPU usage measurement
+    start_memory = psutil.virtual_memory().used / 1024 / 1024  # Start RAM usage measurement (in MB)
+    
+    # Measure GPU usage at the start
+    start_gpu = GPUtil.getGPUs()[0].memoryUsed if GPUtil.getGPUs() else 0
+
     resized_frame = cv2.resize(frame, (640, 384))
-    results = model(resized_frame)
+    results = model(resized_frame, conf=threshold)  # Apply threshold during prediction
+    
+    end_cpu = psutil.cpu_percent(interval=None)  # End CPU usage measurement
+    end_memory = psutil.virtual_memory().used / 1024 / 1024  # End RAM usage measurement (in MB)
+    
+    # Measure GPU usage at the end
+    end_gpu = GPUtil.getGPUs()[0].memoryUsed if GPUtil.getGPUs() else 0
+
+    cpu_usage = end_cpu - start_cpu
+    memory_usage = end_memory - start_memory
+    gpu_usage = end_gpu - start_gpu
     
     print(f"Processing frame {frame_index}")
     
@@ -49,7 +67,10 @@ def predict_frame(frame, frame_index, timestamp):
                     'Y1': y1,
                     'X2': x2,
                     'Y2': y2,
-                    'Inference Time (ms)': result.speed['inference']
+                    'Inference Time (ms)': result.speed['inference'],
+                    'CPU Usage (%)': cpu_usage,
+                    'RAM Usage (MB)': memory_usage,
+                    'GPU Usage (MB)': gpu_usage  # Menambahkan GPU usage pada log
                 }
                 log_data.append(log_entry)
 
@@ -66,7 +87,7 @@ def predict_frame(frame, frame_index, timestamp):
                 print(f"No bounding boxes found for detection in frame {frame_index}")
 
     inference_time = (time.time() - start_time) * 1000  # Convert to milliseconds
-    return results, inference_time
+    return results, inference_time, cpu_usage, memory_usage, gpu_usage
 
 def annotate_frame(results, frame):
     annotated_frame = frame.copy()
@@ -74,7 +95,7 @@ def annotate_frame(results, frame):
         annotated_frame = result.plot()
     return annotated_frame
 
-def process_video(video_path):
+def process_video(video_path, threshold):
     cap = cv2.VideoCapture(video_path)
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     out_path = video_path.replace('.mp4', '_annotated.avi')
@@ -82,38 +103,94 @@ def process_video(video_path):
 
     frame_index = 0
     total_inference_time = 0
+    total_cpu_usage = 0
+    total_memory_usage = 0
+    total_gpu_usage = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
         
         timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000  # get timestamp in seconds
-        results, inference_time = predict_frame(frame, frame_index, timestamp)
+        results, inference_time, cpu_usage, memory_usage, gpu_usage = predict_frame(frame, frame_index, timestamp, threshold)
         annotated_frame = annotate_frame(results, frame)
         out.write(annotated_frame)
         
         total_inference_time += inference_time
+        total_cpu_usage += cpu_usage
+        total_memory_usage += memory_usage
+        total_gpu_usage += gpu_usage
         frame_index += 1
 
     cap.release()
     out.release()
 
-    return total_inference_time
+    # Calculate average CPU, memory, and GPU usage
+    avg_cpu_usage = total_cpu_usage / frame_index
+    avg_memory_usage = total_memory_usage / frame_index
+    avg_gpu_usage = total_gpu_usage / frame_index
+
+    return total_inference_time, avg_cpu_usage, avg_memory_usage, avg_gpu_usage
 
 def aggregate_minute_data():
     df = pd.DataFrame(minute_data)
-    # if os.path.exists("complete_minute_data.xlsx"):
-    #     os.remove("complete_minute_data.xlsx")
-    # df.to_excel("complete_minute_data.xlsx", index=False)
     aggregated_data = df.groupby(['Detected at minute', 'Label']).size().reset_index(name='Count detected')
-    return aggregated_data
+    return aggregated_data        
 
-def save_logs_to_excel(total_inference_time):
+def save_logs_to_excel(total_inference_time, avg_cpu_usage, avg_memory_usage, avg_gpu_usage):
     df_logs = pd.DataFrame(log_data)
+    logs_path = os.path.join('./', app.config['UPLOAD_FOLDER'], 'detection_logs.xlsx')
+    # absolute_path = '/static/uploads/detection_logs.xlsx'
+    # print(logs_path)
+    # try:
+    #     # os.remove(logs_path)
+    #     os.remove(absolute_path)
+    #     print(f"File {logs_path} removed successfully.")
+    # except FileNotFoundError:
+    #     print(f"File {logs_path} does not exist.")
+    # except PermissionError:
+    #     print(f"Permission denied: Cannot remove file {logs_path}.")
+    # except Exception as e:
+    #     print(f"An error occurred: {e}")
+    
+    df_logs.to_excel(logs_path, index=False)
+    
+    if minute_data:
+        aggregated_data = aggregate_minute_data()
+        minute_data_path = os.path.join(app.config['UPLOAD_FOLDER'], 'minute_data_summary.xlsx')        
+        aggregated_data.to_excel(minute_data_path, index=False)
+    
+    # try:
+    #     os.remove(minute_data_path)
+    #     print(f"File {minute_data_path} removed successfully.")
+    # except FileNotFoundError:
+    #     print(f"File {minute_data_path} does not exist.")
+    # except PermissionError:
+    #     print(f"Permission denied: Cannot remove file {minute_data_path}.")
+    # except Exception as e:
+    #     print(f"An error occurred: {e}")
+    
+    
+    # Add total inference time and resource usage to the end of the Excel file
+    with pd.ExcelWriter(logs_path, mode='a', engine='openpyxl') as writer:
+        summary_df = pd.DataFrame({
+            'Total Inference Time (ms)': [total_inference_time],
+            'Average CPU Usage (%)': [avg_cpu_usage],
+            'Average RAM Usage (MB)': [avg_memory_usage],
+            'Average GPU Usage (MB)': [avg_gpu_usage]  # Menambahkan GPU usage pada ringkasan
+        })
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+    
+    return 'detection_logs.xlsx', 'minute_data_summary.xlsx'
+
+def delete_logs_manually(): 
+    # DELETE DETECTION LOGS
     logs_path = os.path.join(app.config['UPLOAD_FOLDER'], 'detection_logs.xlsx')
+    detection_absolute_path = '/static/uploads/detection_logs.xlsx'
     
     try:
-        os.remove(logs_path)
+        # os.remove(logs_path)
+        os.remove(detection_absolute_path)
         print(f"File {logs_path} removed successfully.")
     except FileNotFoundError:
         print(f"File {logs_path} does not exist.")
@@ -122,13 +199,13 @@ def save_logs_to_excel(total_inference_time):
     except Exception as e:
         print(f"An error occurred: {e}")
     
-    df_logs.to_excel(logs_path, index=False)
-    
-    aggregated_data = aggregate_minute_data()
+    # DELETE MINUTE DATA SUMMARY
     minute_data_path = os.path.join(app.config['UPLOAD_FOLDER'], 'minute_data_summary.xlsx')
+    minute_absolute_path = '/static/uploads/minute_data_summary.xlsx'
     
     try:
-        os.remove(minute_data_path)
+        # os.remove(minute_data_path)
+        os.remove(minute_absolute_path)
         print(f"File {minute_data_path} removed successfully.")
     except FileNotFoundError:
         print(f"File {minute_data_path} does not exist.")
@@ -136,14 +213,6 @@ def save_logs_to_excel(total_inference_time):
         print(f"Permission denied: Cannot remove file {minute_data_path}.")
     except Exception as e:
         print(f"An error occurred: {e}")
-    
-    aggregated_data.to_excel(minute_data_path, index=False)
-    
-    # Add total inference time to the end of the Excel file
-    with pd.ExcelWriter(logs_path, mode='a', engine='openpyxl') as writer:
-        pd.DataFrame({'Total Inference Time (ms)': [total_inference_time]}).to_excel(writer, sheet_name='Summary', index=False)
-    
-    return 'detection_logs.xlsx', 'minute_data_summary.xlsx'
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -156,32 +225,33 @@ def index():
             print('No selected file')
             return redirect(request.url)
         if file:
+            log_data.clear()
+            minute_data.clear()
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
+            threshold = float(request.form['threshold'])
             if filename.lower().endswith(('.mp4', '.avi', '.mov')):
-                total_inference_time = round(process_video(filepath), 2)
+                delete_logs_manually()
+                total_inference_time, avg_cpu_usage, avg_memory_usage, avg_gpu_usage = process_video(filepath, threshold)
                 total_inference_time_sec = round(total_inference_time / 1000, 2)
                 total_inference_time_min = round(total_inference_time_sec / 60, 2)
                 annotated_filename = filename.replace('.mp4', '_annotated.avi')
-                excel_logs, excel_minute_data = save_logs_to_excel(total_inference_time)
-                print(f"VIDEO: {annotated_filename}") # debugging
-                print(f"EXCEL LOGS: {excel_logs}") # debugging
-                print(f"MINUTE DATA: {excel_minute_data}") # debugging
-                return render_template('result.html', filename=annotated_filename, excel_logs=excel_logs, excel_minute_data=excel_minute_data, inference_time=total_inference_time, inference_time_sec=total_inference_time_sec, inference_time_min=total_inference_time_min)
+                excel_logs, excel_minute_data = save_logs_to_excel(total_inference_time, avg_cpu_usage, avg_memory_usage, avg_gpu_usage)
+                return render_template('result.html', filename=annotated_filename, excel_logs=excel_logs, excel_minute_data=excel_minute_data, inference_time=total_inference_time, inference_time_sec=total_inference_time_sec, inference_time_min=total_inference_time_min, cpu_usage=avg_cpu_usage, memory_usage=avg_memory_usage, gpu_usage=avg_gpu_usage)
             else:
-                results, inference_time = predict_frame(cv2.imread(filepath), 0, 0)
+                delete_logs_manually()
+                results, inference_time, cpu_usage, memory_usage, gpu_usage = predict_frame(cv2.imread(filepath), 0, 0, threshold)
                 total_inference_time = round(inference_time, 2)
                 total_inference_time_sec = round(total_inference_time / 1000, 2)
                 total_inference_time_min = round(total_inference_time_sec / 60, 2)
                 annotated_image = annotate_frame(results, cv2.imread(filepath))
                 annotated_filename = 'annotated_' + filename
-                Image.fromarray(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB)).save(os.path.join(app.config['UPLOAD_FOLDER'], annotated_filename))
-                excel_logs, excel_minute_data = save_logs_to_excel(0)  # No inference time for images
-                print(f"IMAGE: {annotated_filename}") # debugging
-                print(f"EXCEL LOGS: {excel_logs}") # debugging
-                print(f"MINUTE DATA: {excel_minute_data}") # debugging
-                return render_template('result.html', filename=annotated_filename, excel_logs=excel_logs, excel_minute_data=excel_minute_data, inference_time=total_inference_time, inference_time_sec=total_inference_time_sec, inference_time_min=total_inference_time_min)
+                cv2.imwrite(os.path.join(app.config['UPLOAD_FOLDER'], annotated_filename), annotated_image)
+                excel_logs, excel_minute_data = save_logs_to_excel(total_inference_time, cpu_usage, memory_usage, gpu_usage)
+                return render_template('result.html', filename=annotated_filename, excel_logs=excel_logs, excel_minute_data=excel_minute_data, inference_time=total_inference_time, inference_time_sec=total_inference_time_sec, inference_time_min=total_inference_time_min, cpu_usage=cpu_usage, 
+                memory_usage=memory_usage, 
+                gpu_usage=gpu_usage)
     return render_template('index.html')
 
 @app.route('/uploads/<filename>')

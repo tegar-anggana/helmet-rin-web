@@ -1,24 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Upload File</title>
-  </head>
-  <body>
-    <h1>Upload Video or Image</h1>
-    <form
-      action="{{ url_for('index') }}"
-      method="post"
-      enctype="multipart/form-data"
-    >
-      <input
-        type="file"
-        name="file"
-        accept=".mp4, .avi, .mov, .jpg, .jpeg, .png"
-        required
-      />
-      <button type="submit">Upload</button>
-    </form>
-  </body>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+    <div class="bg-white p-8 rounded shadow-lg max-w-lg w-full">
+        <h1 class="text-2xl font-bold mb-6 text-center">Upload Video or Image</h1>
+        <form action="{{ url_for('index') }}" method="post" enctype="multipart/form-data" class="space-y-4">
+            <div>
+                <label for="file" class="block text-sm font-medium text-gray-700">Choose File</label>
+                <input 
+                    type="file" 
+                    name="file" 
+                    accept=".mp4, .avi, .mov, .jpg, .jpeg, .png" 
+                    required 
+                    class="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+            </div>
+            <div>
+                <label for="threshold" class="block text-sm font-medium text-gray-700">Confidence Threshold (0-1)</label>
+                <input 
+                    type="number" 
+                    name="threshold" 
+                    step="0.01" 
+                    min="0" 
+                    max="1" 
+                    value="0.25" 
+                    required 
+                    class="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+            </div>
+            <div class="text-center">
+                <button 
+                    type="submit" 
+                    class="mt-4 w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                    Upload
+                </button>
+            </div>
+        </form>
+    </div>
+</body>
 </html>

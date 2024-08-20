@@ -1,41 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Processing Results</title>
-  </head>
-  <body>
-    <h1>Processing Results</h1>
-    <p>
-      <a href="{{ url_for('uploaded_file', filename=filename) }}"
-        >Download Annotated File</a
-      >
-    </p>
-    <p>
-      <a href="{{ url_for('uploaded_file', filename=excel_logs) }}"
-        >Download Detection Logs (Excel)</a
-      >
-    </p>
-    <p>
-      <a href="{{ url_for('uploaded_file', filename=excel_minute_data) }}"
-        >Download Minutes Summary (Excel)</a
-      >
-    </p>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+    <div class="bg-white p-8 rounded shadow-lg max-w-xl w-full">
+        <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">Processing Results</h1>
+        <div class="space-y-4">
+            <p class="text-center">
+                <a href="{{ url_for('uploaded_file', filename=filename) }}"
+                   class="text-indigo-600 hover:text-indigo-800 font-medium"
+                >
+                    Download Annotated File
+                </a>
+            </p>
+            <p class="text-center">
+                <a href="{{ url_for('uploaded_file', filename=excel_logs) }}"
+                   class="text-indigo-600 hover:text-indigo-800 font-medium"
+                >
+                    Download Detection Logs (Excel)
+                </a>
+            </p>
+            <p class="text-center">
+                <a href="{{ url_for('uploaded_file', filename=excel_minute_data) }}"
+                   class="text-indigo-600 hover:text-indigo-800 font-medium"
+                >
+                    Download Minutes Summary (Excel)
+                </a>
+            </p>
 
-    {% if inference_time %}
-    <h2>Total Inference Time:</h2>
-    <p>{{ inference_time }} milliseconds</p>
-    {% endif %}
-
-    {% if inference_time_sec %}
-    <p>{{ inference_time_sec }} seconds</p>
-    {% endif %}
-
-    {% if inference_time_min %}
-    <p>{{ inference_time_min }} minutes</p>
-    {% endif %}
-
-    <a href="{{ url_for('index') }}">Upload Another File</a>
-  </body>
+            {% if inference_time or cpu_usage or ram_usage or gpu_usage %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white border border-gray-300">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2 border-b">Metric</th>
+                            <th class="px-4 py-2 border-b">Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if inference_time %}
+                        <tr>
+                            <td class="px-4 py-2 border-b text-gray-700">Inference Time</td>
+                            <td class="px-4 py-2 border-b text-gray-600">{{ inference_time }} milliseconds</td>
+                        </tr>
+                        {% if inference_time_sec %}
+                        <tr>
+                            <td class="px-4 py-2 border-b text-gray-700"></td>
+                            <td class="px-4 py-2 border-b text-gray-600">{{ inference_time_sec }} seconds</td>
+                        </tr>
+                        {% endif %}
+                        {% if inference_time_min %}
+                        <tr>
+                            <td class="px-4 py-2 border-b text-gray-700"></td>
+                            <td class="px-4 py-2 border-b text-gray-600">{{ inference_time_min }} minutes</td>
+                        </tr>
+                        {% endif %}
+                        {% endif %}
+                        {% if cpu_usage %}
+                        <tr>
+                            <td class="px-4 py-2 border-b text-gray-700">CPU Usage</td>
+                            <td class="px-4 py-2 border-b text-gray-600">{{ cpu_usage }} %</td>
+                        </tr>
+                        {% endif %}
+                        {% if memory_usage %}
+                        <tr>
+                            <td class="px-4 py-2 border-b text-gray-700">RAM Usage</td>
+                            <td class="px-4 py-2 border-b text-gray-600">{{ memory_usage }} MB</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="mt-8 text-center">
+            <a href="{{ url_for('index') }}" 
+               class="inline-block py-2 px-4 bg-indigo-600 text-white font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+                Upload Another File
+            </a>
+        </div>
+    </div>
+</body>
 </html>
